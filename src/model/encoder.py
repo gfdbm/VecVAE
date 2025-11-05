@@ -98,6 +98,8 @@ class PosteriorHead(nn.Module):
 
         out = self.mlp(h)                    # [B, 2Z]
         mu, logvar = out.chunk(2, dim=-1)    # [B,Z], [B,Z]
+        # 裁剪 logvar 防止数值不稳定（exp(logvar) 过大或过小）
+        logvar = torch.clamp(logvar, min=-10, max=10)
         return mu, logvar, h                 # h: 便于调试（是喂入 MLP 的 pooled 表示）
 
 def reparameterize(mu: torch.Tensor, logvar: torch.Tensor, eps_std: float = 1.0) -> torch.Tensor:

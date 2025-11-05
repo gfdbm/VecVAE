@@ -236,6 +236,16 @@ def train_one_epoch(ds, renderer, enc, dec, opt, scaler, loss_cfg, beta_sched,
             total, stats = compute_vae_losses(
                 logits_cmd, pred_arg, mu, logvar, seq_cmd, seq_arg, seq_mask, cfg=loss_cfg
             )
+            
+            # ⚠️ NaN/Inf 检测
+            if not torch.isfinite(total):
+                print(f"[WARNING] NaN/Inf detected at step {step}!")
+                print(f"  CE={float(stats['loss_ce'])}, L1={float(stats['loss_l1'])}, KL={float(stats['loss_kl'])}")
+                print(f"  mu: min={mu.min():.3f}, max={mu.max():.3f}")
+                print(f"  logvar: min={logvar.min():.3f}, max={logvar.max():.3f}")
+                if torch.isnan(total):
+                    raise RuntimeError("Loss is NaN! Training stopped.")
+            
             # 用固定类别权重替换 CE（只影响 CE；L1/KL 不变）
             if class_weight is not None:
                 lmc, _, _ = build_loss_masks(seq_cmd, seq_mask)  # [B,L]
@@ -354,6 +364,7 @@ def evaluate(ds, renderer, enc, dec, loss_cfg, batch_size, device,
     seq_mask = batch["seq_mask"].bool()
     contour_ids, seq_topo = batch["contour_ids"], batch["seq_topo"]
 
+    # 评估时使用确定性推断（sample=False → z=mu，不加随机噪声）
     mu, logvar, z, _ = enc(seq_cmd, seq_arg, seq_mask, contour_ids, seq_topo, stage_sdf, sample=False)
     logits_cmd, pred_arg, _ = dec(z, stage_sdf, seq_mask)
     total, stats = compute_vae_losses(
